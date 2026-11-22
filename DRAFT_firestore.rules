@@ -1,0 +1,170 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core identity and validation primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'mohamed.mr4631@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidSha256(val) {
+      return val is string && val.size() == 64 && val.matches('^[a-f0-9]{64}$');
+    }
+
+    function isValidIpString(val) {
+      return val is string && val.size() <= 64 && val.matches('^[0-9a-fA-F.:]*$');
+    }
+
+    function isValidBranchSettings(data) {
+      return data.keys().hasAll(['allowedIp', 'branchName', 'updatedAt', 'updatedBy']) &&
+        data.keys().hasOnly(['allowedIp', 'branchName', 'updatedAt', 'updatedBy']) &&
+        isValidIpString(data.allowedIp) &&
+        data.branchName is string && data.branchName.size() >= 1 && data.branchName.size() <= 80 &&
+        data.updatedAt is timestamp &&
+        data.updatedBy is string && data.updatedBy == request.auth.uid && data.updatedBy.size() <= 128;
+    }
+
+    function isValidAdminSecret(data) {
+      return data.keys().hasAll(['passcodeHash', 'lockEnabled', 'updatedAt', 'updatedBy']) &&
+        data.keys().hasOnly(['passcodeHash', 'lockEnabled', 'updatedAt', 'updatedBy']) &&
+        isValidSha256(data.passcodeHash) &&
+        data.lockEnabled is bool &&
+        data.updatedAt is timestamp &&
+        data.updatedBy is string && data.updatedBy == request.auth.uid && data.updatedBy.size() <= 128;
+    }
+
+    function isValidAdminRole(data) {
+      return data.keys().hasAll(['email', 'createdAt', 'createdBy']) &&
+        data.keys().hasOnly(['email', 'createdAt', 'createdBy']) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.createdBy is string && data.createdBy == request.auth.uid && data.createdBy.size() <= 128;
+    }
+
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['name', 'roleTitle', 'pinHash', 'status', 'deviceId', 'lastCheckIn', 'lastBreakStart', 'totalBreakMs', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'roleTitle', 'pinHash', 'status', 'deviceId', 'lastCheckIn', 'lastBreakStart', 'totalBreakMs', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.roleTitle is string && data.roleTitle.size() <= 60 &&
+        isValidSha256(data.pinHash) &&
+        data.status in ['working', 'break', 'out'] &&
+        (data.deviceId == null || (data.deviceId is string && data.deviceId.size() >= 8 && data.deviceId.size() <= 80)) &&
+        (data.lastCheckIn == null || (data.lastCheckIn is number && data.lastCheckIn >= 0)) &&
+        (data.lastBreakStart == null || (data.lastBreakStart is number && data.lastBreakStart >= 0)) &&
+        data.totalBreakMs is number && data.totalBreakMs >= 0 &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEmployeePunchTransition() {
+      let keysAllowed = incoming().diff(existing()).affectedKeys().hasOnly(['status', 'deviceId', 'lastCheckIn', 'lastBreakStart', 'totalBreakMs', 'updatedAt']);
+      let deviceBindingValid = (existing().deviceId == null && incoming().deviceId is string && incoming().deviceId.size() >= 8 && incoming().deviceId.size() <= 80) ||
+        (existing().deviceId != null && incoming().deviceId == existing().deviceId);
+      let validStateStep =
+        (existing().status == 'out' && incoming().status == 'working') ||
+        (existing().status == 'working' && incoming().status == 'break') ||
+        (existing().status == 'break' && incoming().status == 'working') ||
+        ((existing().status == 'working' || existing().status == 'break') && incoming().status == 'out');
+      return existing().isActive == true &&
+        keysAllowed &&
+        deviceBindingValid &&
+        validStateStep &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+    }
+
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll(['employeeId', 'employeeName', 'action', 'ip', 'deviceId', 'createdByUid', 'timestamp']) &&
+        data.keys().hasOnly(['employeeId', 'employeeName', 'action', 'ip', 'deviceId', 'createdByUid', 'timestamp']) &&
+        isValidId(data.employeeId) &&
+        data.employeeName is string && data.employeeName.size() >= 2 && data.employeeName.size() <= 80 &&
+        data.action in ['check_in', 'break_start', 'break_end', 'check_out'] &&
+        isValidIpString(data.ip) &&
+        data.deviceId is string && data.deviceId.size() >= 8 && data.deviceId.size() <= 80 &&
+        data.createdByUid is string && data.createdByUid == request.auth.uid && data.createdByUid.size() <= 128 &&
+        data.timestamp is timestamp;
+    }
+
+    // Connection validation document
+    match /test/connection {
+      allow get: if isVerifiedUser();
+      allow list, create, update, delete: if false;
+    }
+
+    // Branch settings (public IP lock settings for verified users, writable only by admins)
+    match /settings/branch {
+      allow get: if isVerifiedUser();
+      allow list: if false;
+      allow create: if isAdmin() && isValidBranchSettings(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidBranchSettings(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Admin secret passcode hash (strictly isolated to admins only)
+    match /settings/admin_secret {
+      allow get: if isAdmin();
+      allow list: if false;
+      allow create: if isAdmin() && isValidAdminSecret(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidAdminSecret(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Admin role registry
+    match /admins/{adminUid} {
+      allow get: if isVerifiedUser() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(adminUid) && isValidAdminRole(incoming()) && incoming().createdAt == request.time;
+      allow update: if isAdmin() && isValidId(adminUid) && isValidAdminRole(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(adminUid);
+    }
+
+    // Employees directory (no PII or raw PINs stored here)
+    match /employees/{employeeId} {
+      allow get: if isValidId(employeeId) && (isAdmin() || (isVerifiedUser() && existing().isActive == true));
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.isActive == true);
+      allow create: if isAdmin() && isValidId(employeeId) && isValidEmployee(incoming()) && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(employeeId) && isValidEmployee(incoming()) && (
+        (isAdmin() && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time) ||
+        isValidEmployeePunchTransition()
+      );
+      allow delete: if isAdmin() && isValidId(employeeId);
+    }
+
+    // Immutable attendance audit logs
+    match /attendance_logs/{logId} {
+      allow get: if isValidId(logId) && (isAdmin() || (isVerifiedUser() && existing().createdByUid == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.createdByUid == request.auth.uid);
+      allow create: if isVerifiedUser() && isValidId(logId) && isValidAttendanceLog(incoming()) && incoming().timestamp == request.time && existsAfter(/databases/$(database)/documents/employees/$(incoming().employeeId));
+      allow update, delete: if false;
+    }
+  }
+}

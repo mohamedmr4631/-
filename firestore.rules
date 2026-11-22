@@ -1,0 +1,385 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Core identity and validation primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'mohamed.mr4631@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidSha256(val) {
+      return val is string && val.size() == 64 && val.matches('^[a-f0-9]{64}$');
+    }
+
+    function isValidIpString(val) {
+      return val is string && val.size() <= 64 && val.matches('^[0-9a-fA-F.:]*$');
+    }
+
+    function isValidTimeHHMM(val) {
+      return val is string && val.size() == 5 && val.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+    }
+
+    function isValidDateYYYYMMDD(val) {
+      return val is string && val.size() == 10 && val.matches('^\\d{4}-\\d{2}-\\d{2}$');
+    }
+
+    function isValidBranchSettings(data) {
+      return data.keys().hasAll(['allowedIp', 'branchName', 'updatedAt', 'updatedBy']) &&
+        data.keys().hasOnly(['allowedIp', 'branchName', 'shiftStart', 'graceMinutes', 'maxBreakMinutes', 'targetDailyHours', 'updatedAt', 'updatedBy']) &&
+        isValidIpString(data.allowedIp) &&
+        data.branchName is string && data.branchName.size() >= 1 && data.branchName.size() <= 80 &&
+        (!('shiftStart' in data) || isValidTimeHHMM(data.shiftStart)) &&
+        (!('graceMinutes' in data) || (data.graceMinutes is number && data.graceMinutes >= 0 && data.graceMinutes <= 240)) &&
+        (!('maxBreakMinutes' in data) || (data.maxBreakMinutes is number && data.maxBreakMinutes >= 1 && data.maxBreakMinutes <= 240)) &&
+        (!('targetDailyHours' in data) || (data.targetDailyHours is number && data.targetDailyHours >= 1 && data.targetDailyHours <= 24)) &&
+        data.updatedAt is timestamp &&
+        isValidId(data.updatedBy);
+    }
+
+    function isValidBranch(data) {
+      return data.keys().hasAll(['name', 'allowedIp', 'geoEnabled', 'lat', 'lng', 'radiusMeters', 'shiftStart', 'graceMinutes', 'maxBreakMinutes', 'targetDailyHours', 'shifts', 'isActive', 'createdAt', 'updatedAt', 'updatedBy']) &&
+        data.keys().hasOnly(['name', 'allowedIp', 'geoEnabled', 'lat', 'lng', 'radiusMeters', 'shiftStart', 'graceMinutes', 'maxBreakMinutes', 'targetDailyHours', 'shifts', 'isActive', 'createdAt', 'updatedAt', 'updatedBy']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 80 &&
+        isValidIpString(data.allowedIp) &&
+        data.geoEnabled is bool &&
+        (data.lat == null || (data.lat is number && data.lat >= -90 && data.lat <= 90)) &&
+        (data.lng == null || (data.lng is number && data.lng >= -180 && data.lng <= 180)) &&
+        data.radiusMeters is number && data.radiusMeters >= 10 && data.radiusMeters <= 5000 &&
+        isValidTimeHHMM(data.shiftStart) &&
+        data.graceMinutes is number && data.graceMinutes >= 0 && data.graceMinutes <= 240 &&
+        data.maxBreakMinutes is number && data.maxBreakMinutes >= 1 && data.maxBreakMinutes <= 240 &&
+        data.targetDailyHours is number && data.targetDailyHours >= 1 && data.targetDailyHours <= 24 &&
+        data.shifts is list && data.shifts.size() <= 20 &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp &&
+        isValidId(data.updatedBy);
+    }
+
+    function isValidAdminSecret(data) {
+      return data.keys().hasAll(['passcodeHash', 'lockEnabled', 'updatedAt', 'updatedBy']) &&
+        data.keys().hasOnly(['passcodeHash', 'lockEnabled', 'updatedAt', 'updatedBy']) &&
+        isValidSha256(data.passcodeHash) &&
+        data.lockEnabled is bool &&
+        data.updatedAt is timestamp &&
+        isValidId(data.updatedBy);
+    }
+
+    function isValidAdminRole(data) {
+      return data.keys().hasAll(['email', 'createdAt', 'createdBy']) &&
+        data.keys().hasOnly(['email', 'createdAt', 'createdBy']) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 120 &&
+        data.createdAt is timestamp &&
+        data.createdBy is string && data.createdBy == request.auth.uid && data.createdBy.size() <= 128;
+    }
+
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['name', 'roleTitle', 'pinHash', 'status', 'deviceId', 'lastCheckIn', 'lastBreakStart', 'totalBreakMs', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'roleTitle', 'pinHash', 'status', 'deviceId', 'branchId', 'branchName', 'shiftId', 'shiftName', 'lastCheckIn', 'lastCheckOut', 'lastBreakStart', 'totalBreakMs', 'shiftStart', 'shiftEnd', 'graceMinutes', 'maxBreakMinutes', 'targetDailyHours', 'hourlyRate', 'isActive', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+        data.roleTitle is string && data.roleTitle.size() <= 60 &&
+        isValidSha256(data.pinHash) &&
+        data.status in ['working', 'break', 'out'] &&
+        (data.deviceId == null || (data.deviceId is string && data.deviceId.size() >= 8 && data.deviceId.size() <= 80)) &&
+        (!('branchId' in data) || data.branchId == null || isValidId(data.branchId)) &&
+        (!('branchName' in data) || data.branchName == null || (data.branchName is string && data.branchName.size() <= 80)) &&
+        (!('shiftId' in data) || data.shiftId == null || (data.shiftId is string && data.shiftId.size() <= 80)) &&
+        (!('shiftName' in data) || data.shiftName == null || (data.shiftName is string && data.shiftName.size() <= 80)) &&
+        (data.lastCheckIn == null || (data.lastCheckIn is number && data.lastCheckIn >= 0)) &&
+        (!('lastCheckOut' in data) || data.lastCheckOut == null || (data.lastCheckOut is number && data.lastCheckOut >= 0)) &&
+        (data.lastBreakStart == null || (data.lastBreakStart is number && data.lastBreakStart >= 0)) &&
+        data.totalBreakMs is number && data.totalBreakMs >= 0 &&
+        (!('shiftStart' in data) || data.shiftStart == null || isValidTimeHHMM(data.shiftStart)) &&
+        (!('shiftEnd' in data) || data.shiftEnd == null || isValidTimeHHMM(data.shiftEnd)) &&
+        (!('graceMinutes' in data) || data.graceMinutes == null || (data.graceMinutes is number && data.graceMinutes >= 0 && data.graceMinutes <= 240)) &&
+        (!('maxBreakMinutes' in data) || data.maxBreakMinutes == null || (data.maxBreakMinutes is number && data.maxBreakMinutes >= 1 && data.maxBreakMinutes <= 240)) &&
+        (!('targetDailyHours' in data) || data.targetDailyHours == null || (data.targetDailyHours is number && data.targetDailyHours >= 1 && data.targetDailyHours <= 24)) &&
+        (!('hourlyRate' in data) || data.hourlyRate == null || (data.hourlyRate is number && data.hourlyRate >= 0 && data.hourlyRate <= 100000)) &&
+        data.isActive is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidEmployeePunchTransition() {
+      let keysAllowed = incoming().diff(existing()).affectedKeys().hasOnly(['status', 'deviceId', 'lastCheckIn', 'lastCheckOut', 'lastBreakStart', 'totalBreakMs', 'updatedAt']);
+      let deviceBindingValid = (existing().deviceId == null && incoming().deviceId == null) ||
+        (existing().deviceId == null && incoming().deviceId is string && incoming().deviceId.size() >= 8 && incoming().deviceId.size() <= 80) ||
+        (existing().deviceId != null && incoming().deviceId == existing().deviceId);
+      let validStateStep =
+        (existing().status == 'out' && incoming().status == 'working') ||
+        (existing().status == 'working' && incoming().status == 'break') ||
+        (existing().status == 'break' && incoming().status == 'working') ||
+        ((existing().status == 'working' || existing().status == 'break') && incoming().status == 'out');
+      return existing().isActive == true &&
+        keysAllowed &&
+        deviceBindingValid &&
+        validStateStep;
+    }
+
+    function isValidEmployeeAdminEdit() {
+      return incoming().diff(existing()).affectedKeys().hasOnly(['name', 'roleTitle', 'pinHash', 'deviceId', 'isActive', 'branchId', 'branchName', 'shiftId', 'shiftName', 'shiftStart', 'shiftEnd', 'graceMinutes', 'maxBreakMinutes', 'targetDailyHours', 'hourlyRate', 'updatedAt']);
+    }
+
+    function isValidGeoCoords(coords) {
+      return coords is map &&
+        coords.keys().hasAll(['lat', 'lng']) &&
+        coords.keys().hasOnly(['lat', 'lng']) &&
+        coords.lat is number && coords.lat >= -90 && coords.lat <= 90 &&
+        coords.lng is number && coords.lng >= -180 && coords.lng <= 180;
+    }
+
+    function isValidAttendanceLog(data) {
+      return data.keys().hasAll(['employeeId', 'employeeName', 'action', 'ip', 'deviceId', 'createdByUid', 'timestamp']) &&
+        data.keys().hasOnly(['employeeId', 'employeeName', 'action', 'ip', 'deviceId', 'createdByUid', 'manualRequestId', 'branchId', 'branchName', 'distanceMeters', 'allowedRadiusMeters', 'geoAccuracyMeters', 'employeeCoords', 'timestamp']) &&
+        isValidId(data.employeeId) &&
+        data.employeeName is string && data.employeeName.size() >= 2 && data.employeeName.size() <= 80 &&
+        data.action in ['check_in', 'break_start', 'break_end', 'check_out'] &&
+        isValidIpString(data.ip) &&
+        data.deviceId is string && data.deviceId.size() >= 8 && data.deviceId.size() <= 80 &&
+        isValidId(data.createdByUid) &&
+        (!('manualRequestId' in data) || data.manualRequestId == null || isValidId(data.manualRequestId)) &&
+        (!('branchId' in data) || data.branchId == null || isValidId(data.branchId)) &&
+        (!('branchName' in data) || data.branchName == null || (data.branchName is string && data.branchName.size() <= 80)) &&
+        (!('distanceMeters' in data) || data.distanceMeters == null || (data.distanceMeters is number && data.distanceMeters >= 0 && data.distanceMeters <= 25000000)) &&
+        (!('allowedRadiusMeters' in data) || data.allowedRadiusMeters == null || (data.allowedRadiusMeters is number && data.allowedRadiusMeters >= 10 && data.allowedRadiusMeters <= 5000)) &&
+        (!('geoAccuracyMeters' in data) || data.geoAccuracyMeters == null || (data.geoAccuracyMeters is number && data.geoAccuracyMeters >= 0 && data.geoAccuracyMeters <= 100000)) &&
+        (!('employeeCoords' in data) || data.employeeCoords == null || isValidGeoCoords(data.employeeCoords)) &&
+        data.timestamp is timestamp;
+    }
+
+    function isValidLogTimestampOrApprovedAdjustment(data) {
+      return ((!('manualRequestId' in data) || data.manualRequestId == null) && data.timestamp == request.time) ||
+        ('manualRequestId' in data &&
+          data.manualRequestId is string &&
+          data.timestamp <= request.time &&
+          existsAfter(/databases/$(database)/documents/attendance_requests/$(data.manualRequestId)) &&
+          getAfter(/databases/$(database)/documents/attendance_requests/$(data.manualRequestId)).data.status == 'approved' &&
+          getAfter(/databases/$(database)/documents/attendance_requests/$(data.manualRequestId)).data.employeeId == data.employeeId);
+    }
+
+    function isValidBreakRequest(data) {
+      return data.keys().hasAll(['employeeId', 'employeeName', 'reason', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'notified', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['employeeId', 'employeeName', 'reason', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'notified', 'createdAt', 'updatedAt']) &&
+        isValidId(data.employeeId) &&
+        data.employeeName is string && data.employeeName.size() >= 2 && data.employeeName.size() <= 80 &&
+        data.reason is string && data.reason.size() <= 200 &&
+        data.status in ['pending', 'approved', 'rejected', 'completed'] &&
+        data.requestedAt is timestamp &&
+        (data.reviewedAt == null || data.reviewedAt is timestamp) &&
+        (data.reviewedBy == null || (data.reviewedBy is string && data.reviewedBy.size() >= 2 && data.reviewedBy.size() <= 80)) &&
+        data.notified is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidBreakReviewAction() {
+      return existing().status == 'pending' &&
+        incoming().status in ['approved', 'rejected'] &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy', 'notified', 'updatedAt']) &&
+        incoming().reviewedAt == request.time &&
+        incoming().reviewedBy is string && incoming().reviewedBy.size() >= 2 && incoming().reviewedBy.size() <= 80 &&
+        incoming().notified == false;
+    }
+
+    function isValidBreakNotifyAck() {
+      return existing().status in ['approved', 'rejected'] &&
+        incoming().status == existing().status &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['notified', 'updatedAt']) &&
+        incoming().notified == true;
+    }
+
+    function isValidBreakCompleteAction() {
+      return existing().status == 'approved' &&
+        incoming().status == 'completed' &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notified', 'updatedAt']) &&
+        incoming().notified == true;
+    }
+
+    function isValidAttendanceRequest(data) {
+      return data.keys().hasAll(['employeeId', 'employeeName', 'type', 'targetDate', 'targetTime', 'targetTimestampMs', 'reason', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'notified', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['employeeId', 'employeeName', 'type', 'targetDate', 'targetTime', 'targetTimestampMs', 'reason', 'status', 'requestedAt', 'reviewedAt', 'reviewedBy', 'notified', 'createdAt', 'updatedAt']) &&
+        isValidId(data.employeeId) &&
+        data.employeeName is string && data.employeeName.size() >= 2 && data.employeeName.size() <= 80 &&
+        data.type in ['missed_check_in', 'missed_check_out', 'late_excuse', 'early_leave', 'leave'] &&
+        isValidDateYYYYMMDD(data.targetDate) &&
+        (data.targetTime == '' || isValidTimeHHMM(data.targetTime)) &&
+        (data.targetTimestampMs == null || (data.targetTimestampMs is number && data.targetTimestampMs >= 0)) &&
+        data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 250 &&
+        data.status in ['pending', 'approved', 'rejected'] &&
+        data.requestedAt is timestamp &&
+        (data.reviewedAt == null || data.reviewedAt is timestamp) &&
+        (data.reviewedBy == null || (data.reviewedBy is string && data.reviewedBy.size() >= 2 && data.reviewedBy.size() <= 80)) &&
+        data.notified is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAttendanceRequestReviewAction() {
+      return existing().status == 'pending' &&
+        incoming().status in ['approved', 'rejected'] &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'reviewedAt', 'reviewedBy', 'notified', 'updatedAt']) &&
+        incoming().reviewedAt == request.time &&
+        incoming().reviewedBy is string && incoming().reviewedBy.size() >= 2 && incoming().reviewedBy.size() <= 80 &&
+        incoming().notified == false;
+    }
+
+    function isValidAttendanceRequestNotifyAck() {
+      return existing().status in ['approved', 'rejected'] &&
+        incoming().status == existing().status &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['notified', 'updatedAt']) &&
+        incoming().notified == true;
+    }
+
+    // Connection validation document
+    match /test/connection {
+      allow get: if resource == null || resource.id == 'connection';
+      allow list, create, update, delete: if false;
+    }
+
+    // Branch settings (schema-validated singleton)
+    match /settings/branch {
+      allow get: if resource == null || resource.data.branchName is string;
+      allow list: if false;
+      allow create: if isValidBranchSettings(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isValidBranchSettings(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Multi-branch configurations & shifts
+    match /branches/{branchId} {
+      allow get: if isValidId(branchId) && (resource == null || existing().isActive is bool);
+      allow list: if request.query.limit <= 100;
+      allow create: if isValidId(branchId) && isValidBranch(incoming()) && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isValidId(branchId) && isValidBranch(incoming()) && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time;
+      allow delete: if isValidId(branchId) && existing().isActive is bool;
+    }
+
+    // Admin secret (reserved for Firebase Auth admins)
+    match /settings/admin_secret {
+      allow get: if isAdmin();
+      allow list: if false;
+      allow create: if isAdmin() && isValidAdminSecret(incoming()) && incoming().updatedAt == request.time;
+      allow update: if isAdmin() && isValidAdminSecret(incoming()) && incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // Admin role registry
+    match /admins/{adminUid} {
+      allow get: if isVerifiedUser() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidId(adminUid) && isValidAdminRole(incoming()) && incoming().createdAt == request.time;
+      allow update: if isAdmin() && isValidId(adminUid) && isValidAdminRole(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin() && isValidId(adminUid);
+    }
+
+    // Employees directory (strict schema & state-machine rules, no PII or login passwords)
+    match /employees/{employeeId} {
+      allow get: if isValidId(employeeId) && (resource == null || existing().isActive is bool);
+      allow list: if request.query.limit <= 200;
+      allow create: if isValidId(employeeId) && isValidEmployee(incoming()) && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isValidId(employeeId) && isValidEmployee(incoming()) && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time && (
+        isValidEmployeePunchTransition() ||
+        isValidEmployeeAdminEdit()
+      );
+      allow delete: if isValidId(employeeId) && existing().isActive is bool;
+    }
+
+    // Immutable attendance audit logs
+    match /attendance_logs/{logId} {
+      allow get: if isValidId(logId) && existing().employeeId is string;
+      allow list: if request.query.limit <= 50;
+      allow create: if isValidId(logId) && isValidAttendanceLog(incoming()) && isValidLogTimestampOrApprovedAdjustment(incoming()) && existsAfter(/databases/$(database)/documents/employees/$(incoming().employeeId));
+      allow update, delete: if false;
+    }
+
+    // Employee break permission requests & manager approval notifications
+    match /break_requests/{requestId} {
+      allow get: if isValidId(requestId) && (resource == null || existing().employeeId is string);
+      allow list: if request.query.limit <= 50;
+      allow create: if isValidId(requestId) &&
+        isValidBreakRequest(incoming()) &&
+        incoming().status == 'pending' &&
+        incoming().reviewedAt == null &&
+        incoming().reviewedBy == null &&
+        incoming().notified == false &&
+        incoming().requestedAt == request.time &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/employees/$(incoming().employeeId)) &&
+        get(/databases/$(database)/documents/employees/$(incoming().employeeId)).data.status == 'working';
+      allow update: if isValidId(requestId) &&
+        isValidBreakRequest(incoming()) &&
+        incoming().employeeId == existing().employeeId &&
+        incoming().employeeName == existing().employeeName &&
+        incoming().reason == existing().reason &&
+        incoming().requestedAt == existing().requestedAt &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isValidBreakReviewAction() ||
+          isValidBreakNotifyAck() ||
+          isValidBreakCompleteAction()
+        );
+      allow delete: if false;
+    }
+
+    // Employee missed-punch, excuse/permission, and leave requests
+    match /attendance_requests/{requestId} {
+      allow get: if isValidId(requestId) && (resource == null || existing().employeeId is string);
+      allow list: if request.query.limit <= 50;
+      allow create: if isValidId(requestId) &&
+        isValidAttendanceRequest(incoming()) &&
+        incoming().status == 'pending' &&
+        incoming().reviewedAt == null &&
+        incoming().reviewedBy == null &&
+        incoming().notified == false &&
+        incoming().requestedAt == request.time &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/employees/$(incoming().employeeId));
+      allow update: if isValidId(requestId) &&
+        isValidAttendanceRequest(incoming()) &&
+        incoming().employeeId == existing().employeeId &&
+        incoming().employeeName == existing().employeeName &&
+        incoming().type == existing().type &&
+        incoming().targetDate == existing().targetDate &&
+        incoming().targetTime == existing().targetTime &&
+        incoming().targetTimestampMs == existing().targetTimestampMs &&
+        incoming().reason == existing().reason &&
+        incoming().requestedAt == existing().requestedAt &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isValidAttendanceRequestReviewAction() ||
+          isValidAttendanceRequestNotifyAck()
+        );
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,622 @@
+{
+  "entities": {
+    "BranchSettings": {
+      "title": "BranchSettings",
+      "description": "Default global branch network IP lock, shift timing, break limit, and daily work hours configuration.",
+      "type": "object",
+      "properties": {
+        "allowedIp": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[0-9a-fA-F.:]*$",
+          "description": "Allowed branch public IP address, or empty string for open trial mode."
+        },
+        "branchName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Display name of the branch."
+        },
+        "shiftStart": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Default branch shift start time in HH:MM 24h format."
+        },
+        "graceMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 240,
+          "description": "Allowed grace period in minutes after shiftStart before marking late."
+        },
+        "maxBreakMinutes": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 240,
+          "description": "Maximum allowed break duration in minutes per shift before flagging an overage warning."
+        },
+        "targetDailyHours": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 24,
+          "description": "Expected net working hours per day for overtime/deficit calculation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "User ID of the admin who updated the settings."
+        }
+      },
+      "required": ["allowedIp", "branchName", "updatedAt", "updatedBy"]
+    },
+    "Branch": {
+      "title": "Branch",
+      "description": "Branch configuration including network IP lock, GPS geofence, break/work hours policy, and defined shifts.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Branch display name."
+        },
+        "allowedIp": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[0-9a-fA-F.:]*$",
+          "description": "Optional branch public IP address for network lock."
+        },
+        "geoEnabled": {
+          "type": "boolean",
+          "description": "Whether GPS geofencing is enforced for this branch."
+        },
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90,
+          "description": "Branch latitude coordinate, or null."
+        },
+        "lng": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180,
+          "description": "Branch longitude coordinate, or null."
+        },
+        "radiusMeters": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 5000,
+          "description": "Allowed GPS radius in meters around the branch."
+        },
+        "shiftStart": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 5,
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Default shift start time in HH:MM format for this branch."
+        },
+        "graceMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 240,
+          "description": "Grace minutes for late arrival at this branch."
+        },
+        "maxBreakMinutes": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 240,
+          "description": "Maximum allowed break duration in minutes at this branch."
+        },
+        "targetDailyHours": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 24,
+          "description": "Target net daily working hours at this branch."
+        },
+        "shifts": {
+          "type": "array",
+          "maxItems": 20,
+          "description": "List of shifts configured for this branch.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+              "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+              "startTime": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" },
+              "endTime": { "type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+            },
+            "required": ["id", "name", "startTime", "endTime"]
+          }
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether the branch is active."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when branch was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest update."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "User ID of the admin who updated the branch."
+        }
+      },
+      "required": [
+        "name",
+        "allowedIp",
+        "geoEnabled",
+        "radiusMeters",
+        "shiftStart",
+        "graceMinutes",
+        "maxBreakMinutes",
+        "targetDailyHours",
+        "shifts",
+        "isActive",
+        "createdAt",
+        "updatedAt",
+        "updatedBy"
+      ]
+    },
+    "AdminSecret": {
+      "title": "AdminSecret",
+      "description": "Admin panel secondary kiosk lock passcode hash.",
+      "type": "object",
+      "properties": {
+        "passcodeHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 hash of the admin passcode."
+        },
+        "lockEnabled": {
+          "type": "boolean",
+          "description": "Whether the secondary passcode lock is enabled on the admin panel."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "ID of the admin who updated the secret."
+        }
+      },
+      "required": ["passcodeHash", "lockEnabled", "updatedAt", "updatedBy"]
+    },
+    "AdminRole": {
+      "title": "AdminRole",
+      "description": "Explicitly granted admin role document keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 120,
+          "description": "Verified email of the admin user."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin role was granted."
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "UID of the admin who granted the role."
+        }
+      },
+      "required": ["email", "createdAt", "createdBy"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Employee profile, branch and shift assignment, hashed PIN, current shift status, bound device identifier, and optional HR overrides.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Employee full name."
+        },
+        "roleTitle": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Optional job title or department."
+        },
+        "pinHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 hash of employeeId and PIN."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["working", "break", "out"],
+          "description": "Current shift status."
+        },
+        "deviceId": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Bound browser/mobile device UUID, or null when unbound."
+        },
+        "branchId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Assigned branch document ID, or null."
+        },
+        "branchName": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Snapshot name of the assigned branch, or null."
+        },
+        "shiftId": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Assigned shift ID within the branch, or null."
+        },
+        "shiftName": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Snapshot name of the assigned shift, or null."
+        },
+        "lastCheckIn": {
+          "type": "number",
+          "description": "Epoch milliseconds of latest check-in, or null."
+        },
+        "lastCheckOut": {
+          "type": "number",
+          "description": "Epoch milliseconds of latest check-out, or null."
+        },
+        "lastBreakStart": {
+          "type": "number",
+          "description": "Epoch milliseconds when current break started, or null."
+        },
+        "totalBreakMs": {
+          "type": "number",
+          "description": "Accumulated break duration in milliseconds for current shift."
+        },
+        "shiftStart": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Optional employee-specific shift start HH:MM override, or null."
+        },
+        "shiftEnd": {
+          "type": "string",
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Optional employee-specific shift end HH:MM override, or null."
+        },
+        "graceMinutes": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 240,
+          "description": "Optional employee-specific grace minutes override, or null."
+        },
+        "maxBreakMinutes": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 240,
+          "description": "Optional employee-specific max break minutes override, or null."
+        },
+        "targetDailyHours": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 24,
+          "description": "Optional employee-specific target daily working hours, or null."
+        },
+        "hourlyRate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100000,
+          "description": "Optional hourly rate for estimated salary calculation in reports, or null."
+        },
+        "isActive": {
+          "type": "boolean",
+          "description": "Whether the employee is active in the kiosk directory."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when employee was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest update."
+        }
+      },
+      "required": ["name", "roleTitle", "pinHash", "status", "totalBreakMs", "isActive", "createdAt", "updatedAt"]
+    },
+    "AttendanceLog": {
+      "title": "AttendanceLog",
+      "description": "Immutable audit log entry for check-in, break, and check-out actions, including manager-approved missed punch adjustments.",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Document ID of the employee."
+        },
+        "employeeName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Snapshot name of the employee at action time."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["check_in", "break_start", "break_end", "check_out"],
+          "description": "Attendance event type."
+        },
+        "ip": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[0-9a-fA-F.:]*$",
+          "description": "Detected client public IP at action time."
+        },
+        "deviceId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 80,
+          "description": "Unique device fingerprint from client or manual_adjustment."
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Session user ID who recorded the action."
+        },
+        "manualRequestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Optional approved attendance_requests document ID when adding a forgotten punch."
+        },
+        "branchId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Optional branch document ID snapshot at punch time."
+        },
+        "branchName": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Optional branch name snapshot at punch time."
+        },
+        "distanceMeters": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Optional GPS distance in meters from the branch center at punch time."
+        },
+        "allowedRadiusMeters": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 5000,
+          "description": "Optional configured branch geofence radius in meters."
+        },
+        "geoAccuracyMeters": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Optional GPS horizontal accuracy in meters."
+        },
+        "employeeCoords": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+            "lng": { "type": "number", "minimum": -180, "maximum": 180 }
+          },
+          "required": ["lat", "lng"],
+          "description": "Optional employee GPS coordinates at punch time."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the attendance event (or approved missed punch time)."
+        }
+      },
+      "required": ["employeeId", "employeeName", "action", "ip", "deviceId", "createdByUid", "timestamp"]
+    },
+    "BreakRequest": {
+      "title": "BreakRequest",
+      "description": "Employee break permission request requiring manager approval and notification delivery.",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Document ID of the employee requesting a break."
+        },
+        "employeeName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Name of the employee requesting a break."
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Optional reason for the break request."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected", "completed"],
+          "description": "Approval lifecycle state of the break request."
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the request was submitted."
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the manager approved or rejected the request, or null."
+        },
+        "reviewedBy": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Name of the manager who reviewed the request, or null."
+        },
+        "notified": {
+          "type": "boolean",
+          "description": "Whether the employee acknowledged the approval/rejection notification."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated."
+        }
+      },
+      "required": ["employeeId", "employeeName", "reason", "status", "requestedAt", "notified", "createdAt", "updatedAt"]
+    },
+    "AttendanceRequest": {
+      "title": "AttendanceRequest",
+      "description": "Employee request for missed check-in/out correction, late/early-leave permission, or leave.",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Document ID of the employee submitting the request."
+        },
+        "employeeName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 80,
+          "description": "Name of the employee submitting the request."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["missed_check_in", "missed_check_out", "late_excuse", "early_leave", "leave"],
+          "description": "Category of attendance, permission, or leave request."
+        },
+        "targetDate": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Target local date (YYYY-MM-DD)."
+        },
+        "targetTime": {
+          "type": "string",
+          "maxLength": 5,
+          "pattern": "^(([01][0-9]|2[0-3]):[0-5][0-9])?$",
+          "description": "Target time (HH:MM) or empty string for full-day leave."
+        },
+        "targetTimestampMs": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Target epoch milliseconds for missed punch requests, or null."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 250,
+          "description": "Reason or justification provided by the employee."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"],
+          "description": "Manager review status."
+        },
+        "requestedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when submitted."
+        },
+        "reviewedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when reviewed, or null."
+        },
+        "reviewedBy": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Name of reviewing manager, or null."
+        },
+        "notified": {
+          "type": "boolean",
+          "description": "Whether the employee acknowledged the decision notification."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when last updated."
+        }
+      },
+      "required": ["employeeId", "employeeName", "type", "targetDate", "targetTime", "reason", "status", "requestedAt", "notified", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/settings/branch": {
+      "schema": { "$ref": "#/entities/BranchSettings" },
+      "description": "Singleton branch IP lock and HR policy defaults document."
+    },
+    "/branches/{branchId}": {
+      "schema": { "$ref": "#/entities/Branch" },
+      "description": "Multi-branch configurations with IP, GPS geofence, break/work hours, and shifts."
+    },
+    "/settings/admin_secret": {
+      "schema": { "$ref": "#/entities/AdminSecret" },
+      "description": "Singleton admin passcode hash document isolated from non-admins."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminRole" },
+      "description": "Authorized admin UIDs."
+    },
+    "/employees/{employeeId}": {
+      "schema": { "$ref": "#/entities/Employee" },
+      "description": "Active and archived employees with branch/shift assignments, hashed PINs, and bound device IDs."
+    },
+    "/attendance_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AttendanceLog" },
+      "description": "Immutable chronological attendance and break events."
+    },
+    "/break_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/BreakRequest" },
+      "description": "Real-time employee break permission requests and manager approval statuses."
+    },
+    "/attendance_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/AttendanceRequest" },
+      "description": "Employee missed-punch, excuse/permission, and leave requests."
+    }
+  }
+}
